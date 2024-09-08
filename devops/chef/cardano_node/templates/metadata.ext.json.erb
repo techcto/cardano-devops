@@ -1,0 +1,45 @@
+{
+    "how-to-implement": "in your meta.json - define *extended* with url to this (json) file - https://raw.githubusercontent.com/cardanians/adapools.org/master/example-meta.json",
+    "info": {
+        "url_png_icon_64x64": "https://<%= node[:install][:ProjectHomepage] %>/tradecartel-icon.png",
+        "url_png_logo": "https://<%= node[:install][:ProjectHomepage] %>/tradecartel-logo.png",
+        "location": "<%= node[:install][:ProjectName] %>",
+        "social": {
+            "twitter_handle": "",
+            "telegram_handle": "",
+            "facebook_handle": "",
+            "youtube_handle": "",
+            "twitch_handle": "",
+            "discord_handle": "",
+            "github_handle": ""
+        },
+        "company": {
+            "name": "TradeCartel",
+            "addr": "",
+            "city": "",
+            "country": "US",
+            "company_id": "<%= node[:install][:ProjectTicker] %>",
+            "vat_id": ""
+        },
+        "about": {
+            "me": "<%= node[:install][:ProjectDescription] %>",
+            "server": "High-available Cardano Node Cluster",
+            "company": "TradeCartel <%= node[:install][:ProjectTicker] %>"
+        }
+    },
+    "my-pool-ids": {
+        "0": "<%= node[:install][:AdaPoolId] %>",
+        "1": ""
+    },
+    "when-satured-then-recommend": {
+        "0": "",
+        "1": ""
+    },
+    "telegram-admin-handle": {
+        "0": ""
+    },
+    "adapools_ext": {
+        "prometheus": {
+        }
+    }
+}

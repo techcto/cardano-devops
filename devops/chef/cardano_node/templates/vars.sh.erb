@@ -1,0 +1,14 @@
+#Get Tip network
+export tip
+if [ "<%= node[:install][:Network] %>" == "testnet" ]; then
+  tip="testnet-magic 1097911063"
+else
+  tip="mainnet"
+fi
+echo $tip
+
+export CARDANO_NODE_SOCKET_PATH=/opt/cardano/cnode/sockets/node0.socket
+export POOLDIR=<%= node[:install][:CardanoPath] %>/priv/pool/<%= node[:install][:ProjectTicker] %>
+export WALLETDIR=<%= node[:install][:CardanoPath] %>/priv/wallet/operator
+mkdir -p $POOLDIR
+mkdir -p $WALLETDIR

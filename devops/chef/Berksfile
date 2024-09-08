@@ -1,0 +1,4 @@
+source "https://supermarket.getchef.com"
+
+cookbook 'cardano_node', path: 'cardano_node'
+cookbook 'alb_support', path: 'alb_support'

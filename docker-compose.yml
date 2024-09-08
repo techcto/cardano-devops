@@ -1,0 +1,80 @@
+version: '2'
+
+networks:
+  cardano:
+    name: cardano
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24
+
+services:
+  web: 
+    build:
+      context: .
+      dockerfile: ./devops/docker/Dockerfile.web
+    ports:
+      - '${HTTP_PORT}:80'
+      - '${HTTPS_PORT}:443'
+    restart: always
+  block-node:
+    build:
+      context: .
+      dockerfile: ./devops/docker/Dockerfile.block
+    expose:
+      - $block_node_port
+    networks:
+      cardano:
+        ipv4_address: $block_node_addr
+    environment: 
+      network: ${network}
+      cardano_path: ${cardano_path}
+      database_path: ${database_path}
+      block_node_addr: ${block_node_addr}
+      block_node_port: ${block_node_port}
+      project_name: ${project_name}
+      project_description: ${project_description}
+      project_ticker: ${project_ticker}
+      project_homepage: ${project_homepage}
+      public_node_addr: ${public_node_addr}
+    restart: on-failure
+    volumes:
+      - block-data:${database_path}
+      - ./share:/${cardano_path}/share
+  relay-node:
+    build:
+      context: .
+      dockerfile: ./devops/docker/Dockerfile.relay
+    ports:
+      - '${relay_node_port}:${relay_node_port}'
+      - '${prometheus_port}:${prometheus_port}'
+    networks:
+      cardano:
+        ipv4_address: $relay_node_addr
+    environment: 
+      network: ${network}
+      cardano_path: ${cardano_path}
+      database_path: ${database_path}
+      relay_node_addr: ${relay_node_addr}
+      relay_node_port: ${relay_node_port}
+      block_node_port: ${block_node_port}
+    restart: on-failure
+    volumes:
+      - relay-data:${database_path}
+      - ./share:/${cardano_path}/share
+  wallet:
+    build:
+      context: .
+      dockerfile: ./devops/docker/Dockerfile.wallet
+    restart: on-failure
+  # jormanager:
+  #   build:
+  #     context: .
+  #     dockerfile: ./devops/docker/Dockerfile.jormanager
+  #   volumes:
+  #     - node-ipc:/ipc
+  #   restart: on-failure
+
+volumes:
+  relay-data:
+  block-data:

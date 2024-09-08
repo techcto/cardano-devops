@@ -1,0 +1,12 @@
+FROM nginx:alpine
+
+#Config
+COPY ./web.conf /etc/nginx/templates/default.conf.template
+
+#Files
+RUN mkdir -p /var/www/html
+WORKDIR /var/www/html
+
+#Install App
+COPY config/metadata.json ./metadata.json
+COPY config/index.html ./index.html

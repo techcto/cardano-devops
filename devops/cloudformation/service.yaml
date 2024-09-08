@@ -1,0 +1,631 @@
+Description: >
+    This template deploys Cardano Node using Opsworks Chef recipes.  
+
+Parameters:
+
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+    InstanceType:
+        Description: Web Server EC2 instance type
+        Type: String
+        Default: t2.large
+        AllowedValues: [t2.small, t2.medium, t2.large, t2.xlarge, m3.medium, m3.large,
+        m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge, m4.10xlarge,
+        c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, c3.large, c3.xlarge,
+        c3.2xlarge, c3.4xlarge, c3.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge,
+        r3.8xlarge, i2.xlarge, i2.2xlarge, i2.4xlarge, i2.8xlarge]
+        ConstraintDescription: Please choose a valid instance type.
+
+    BlockInstanceType:
+        Description: Block Server EC2 instance type
+        Type: String
+        Default: t2.xlarge
+        AllowedValues: [t2.small, t2.medium, t2.large, t2.xlarge, m3.medium, m3.large,
+        m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge, m4.10xlarge,
+        c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, c3.large, c3.xlarge,
+        c3.2xlarge, c3.4xlarge, c3.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge,
+        r3.8xlarge, i2.xlarge, i2.2xlarge, i2.4xlarge, i2.8xlarge]
+        ConstraintDescription: Please choose a valid instance type.
+
+    ClusterSize:
+        Description: How many hosts do you want to initially deploy?
+        Type: Number
+        Default: 1
+
+    VPC:
+        Description: Choose which VPC this cluster should be deployed to
+        Type: AWS::EC2::VPC::Id
+
+    KeyName:
+        Default: ''
+        Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+        Type: 'AWS::EC2::KeyPair::KeyName'
+
+    AMI:
+        Description: Build AMI - This should be passed in
+        Type: String
+
+    Subnets:
+        Description: Choose which subnets this cluster should be deployed to
+        Type: List<AWS::EC2::Subnet::Id>
+
+    Path: 
+        Description: The path to register with the Application Load Balancer
+        Type: String
+        Default: /
+
+    FQDN:
+        Type: String
+        Description: Fully qualified URL for using app.  DNS of FQDN must be pointed to CNAME of ALB.
+        Default: ''
+
+    CertificateArn:
+        Type: String
+        Description: SSL cert for AWS ALB HTTPS listener
+        Default: ''
+
+    LoadBalancer:
+        Description: The load balancer for the cluster hosts
+        Type: String
+
+    LoadBalancerSecurityGroup:
+        Description: Select the Load Balancer Security Group to use for the cluster hosts
+        Type: AWS::EC2::SecurityGroup::Id
+
+    MinClusterSize:
+        Description: Minimum hosts to deploy
+        Type: Number
+        Default: 1
+
+    MaxClusterSize:
+        Description: Maximum hosts to deploy
+        Type: Number
+        Default: 5
+
+    # DatabaseHost:
+    #   Type: String
+    #   Description: The database host
+
+    # DatabaseName:
+    #   Type: String
+    #   Description: The database name
+
+    # DatabaseUsername:
+    #   Type: String
+    #   Description: The database user name
+
+    # DatabasePassword:
+    #   Type: String
+    #   Description: The database user password
+
+    DeploymentType:
+        Type: String
+        Default: testnet
+        AllowedValues:
+        - mainnet
+        - testnet
+        Description: Pick network type.
+
+    RestoreBucketName:
+        Default: ''
+        Description: Name of bucket containing files for restore
+        Type: String
+
+    AdminUser:
+        Description: Admin User
+        Type: String
+
+    AdminPassword:
+        Description: Admin Password
+        Type: String
+
+    DeletionPolicy:
+        Default: 'Snapshot'
+        Type: String
+        Description: 'Asset Deletion Policy'
+
+    BYOL:
+        Default: 'False'
+        Type: String
+
+    CookbookURL:
+        Type: String
+
+    Version:
+        Description: Version
+        Type: String
+        Default: ""
+        
+    RelayNodePort: 
+        Default: 1337
+        Type: String
+
+    BlockNodePort: 
+        Default: 1338
+        Type: String
+
+    WebPort: 
+        Default: 80
+        Type: String
+    
+    WebSSLPort: 
+        Default: 443
+        Type: String
+
+    ProjectTicker: 
+        Type: String
+
+    ProjectDescription:
+        Type: String
+        
+    Pledge: 
+        Type: String
+        Default: 340
+
+    AdaPoolId:
+        Type: String
+        Default: ""
+    
+    Margin: 
+        Type: String
+        Default: "0.15"
+
+Conditions:
+    UseHTTPS: !Not [!Equals [ !Ref CertificateArn, "" ]]
+    UseHTTP: !Equals [ !Ref CertificateArn, "" ]
+    NodeTwo: !Or [!Equals ["2", !Ref ClusterSize], !Equals ["3", !Ref ClusterSize]]
+    NodeThree: !Equals ["3", !Ref ClusterSize]
+
+Resources:
+
+    BackupBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: !Ref 'EnvironmentName'
+            AccessControl: 'BucketOwnerFullControl'
+            Tags:
+                -
+                  Key: 'Name'
+                  Value: !Ref 'EnvironmentName'
+        DeletionPolicy: 'Delete'
+
+    CloudWatchLogsGroup:
+        Type: AWS::Logs::LogGroup
+        Properties: 
+            LogGroupName: !Ref AWS::StackName
+            RetentionInDays: 14  
+
+    RelayServerSecurityGroup:
+        Type: 'AWS::EC2::SecurityGroup'
+        Properties:
+            GroupDescription: Allow inbound requests from the ALB to the OpsWorks instances
+            VpcId: !Ref VPC
+            SecurityGroupIngress:
+                - 
+                    IpProtocol: tcp
+                    FromPort: !Ref RelayNodePort
+                    ToPort: !Ref RelayNodePort
+                    CidrIp: 0.0.0.0/0
+            Tags:
+                - 
+                    Key: Name
+                    Value: !Join ['-', [!Ref 'EnvironmentName', 'RelayServerSecurityGroup']]
+
+    LoadBalancerSecurityGroupIngressFromRelay:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        Description: Ingress from public to relay
+        GroupId: !Ref 'LoadBalancerSecurityGroup'
+        SourceSecurityGroupId: !Ref 'RelayServerSecurityGroup'
+        IpProtocol: tcp
+        FromPort: !Ref 'RelayNodePort'
+        ToPort: !Ref 'RelayNodePort'
+
+    BlockServerSecurityGroup:
+        Type: 'AWS::EC2::SecurityGroup'
+        Properties:
+            GroupDescription: Allow inbound requests from the ALB to the OpsWorks instances
+            VpcId: !Ref VPC
+            SecurityGroupIngress:
+                - 
+                    IpProtocol: tcp
+                    FromPort: !Ref BlockNodePort
+                    ToPort: !Ref BlockNodePort
+                    SourceSecurityGroupId: !Ref RelayServerSecurityGroup
+
+    OpsWorksServiceRole:
+        Type: 'AWS::IAM::Role'
+        Properties:
+            AssumeRolePolicyDocument:
+                Statement:
+                    - 
+                        Effect: Allow
+                        Principal:
+                            Service: opsworks.amazonaws.com
+                        Action:
+                            - 'sts:AssumeRole'
+            Path: /
+            Policies:
+                - 
+                    PolicyName: opsworks-service
+                    PolicyDocument:
+                        Statement:
+                            - 
+                                Effect: Allow
+                                Action:
+                                    - 'rds:*'
+                                    - 'ec2:*'
+                                    - 'iam:PassRole'
+                                    - 'cloudwatch:GetMetricStatistics'
+                                    - 'elasticloadbalancing:*'
+                                Resource: '*'
+
+    InstanceRole:
+        Type: 'AWS::IAM::Role'
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement: 
+                    - 
+                        Effect: "Allow"
+                        Principal: 
+                            Service: 
+                                - "ec2.amazonaws.com"
+                        Action: 
+                        - "sts:AssumeRole"
+            Path: /
+            Policies:
+                - 
+                    PolicyName: PowerUserPolicy
+                    PolicyDocument:
+                        Statement:
+                        - 
+                            Sid: PowerUserStmt
+                            Effect: Allow
+                            NotAction: 'iam:*'
+                            Resource: '*'
+
+    InstanceProfile:
+        Type: 'AWS::IAM::InstanceProfile'
+        Properties:
+            Path: /
+            Roles:
+                - !Ref InstanceRole
+
+    App:
+        Type: 'AWS::OpsWorks::App'
+        Properties:
+            StackId: !Ref Stack
+            Name: cardano-node
+            Type: other
+            Attributes:
+                DocumentRoot: ' '
+
+    Stack:
+        Type: 'AWS::OpsWorks::Stack'
+        Properties:
+            Name: !Ref 'EnvironmentName'
+            DefaultOs: 'Custom'
+            ConfigurationManager:
+                Name: Chef
+                Version: '12'
+            ServiceRoleArn: !GetAtt 
+                - OpsWorksServiceRole
+                - Arn
+            DefaultInstanceProfileArn: !GetAtt 
+                - InstanceProfile
+                - Arn
+            VpcId: !Ref VPC
+            DefaultSubnetId: !Select 
+                - '0'
+                - !Ref Subnets
+            UseCustomCookbooks: 'true'
+            CustomCookbooksSource:
+                Revision: master
+                Type: s3
+                Url: !Ref CookbookURL
+            CustomJson:
+                private_dns: 'cardano'
+                alb_helper:
+                    target_group_arn: !Ref RelayTargetGroup
+                install:
+                    StackName: !Ref 'EnvironmentName'
+                    Region: !Ref 'AWS::Region'
+                    BackupBucket: !Ref BackupBucket
+                    CardanoPath: "/opt/cardano/cnode"
+                    Network: !Ref DeploymentType
+                    DatabasePath: "/opt/cardano/cnode/db"
+                    SocketPath: "/opt/cardano/cnode/sockets"
+                    PublicNodeAddress: !Ref FQDN
+                    RelayNodePort: 1337
+                    BlockNodePort: 1338
+                    Pledge: !Ref Pledge
+                    Margin: !Ref Margin
+                    # DBName: !Ref DatabaseName
+                    # DBHost: !Ref DatabaseHost
+                    # DBUser: !Ref DatabaseUsername
+                    # DBPassword: !Ref DatabasePassword
+                    User: !Ref AdminUser
+                    Password: !Ref AdminPassword
+                    Version: !Ref Version
+                    ProjectName: "Cardano"
+                    ProjectDescription: !Ref ProjectDescription
+                    ProjectTicker: !Ref ProjectTicker
+                    ProjectHomepage: !Ref FQDN
+                    AdaPoolId: !Ref AdaPoolId
+
+    BlockServerLayer:
+        Type: 'AWS::OpsWorks::Layer'
+        DependsOn:
+            - App
+        Properties:
+            StackId: !Ref Stack
+            Name: Block
+            Type: custom
+            Shortname: block-server
+            EnableAutoHealing: 'true'
+            AutoAssignElasticIps: 'true'
+            AutoAssignPublicIps: 'false'
+            CustomSecurityGroupIds:
+                - !Ref BlockServerSecurityGroup
+            CustomRecipes:
+                Setup:
+                    - 'cardano_node::deploy_block'
+                Configure: []
+                Deploy:
+                    - 'cardano_node::pool'
+                Undeploy: []
+                # Shutdown: ['cardano_node::shutdown']
+
+    RelayServerLayer:
+        Type: 'AWS::OpsWorks::Layer'
+        DependsOn:
+            - BlockInstance
+        Properties:
+            StackId: !Ref Stack
+            Name: Relay
+            Type: custom
+            Shortname: relay-server
+            EnableAutoHealing: 'true'
+            AutoAssignElasticIps: 'true'
+            AutoAssignPublicIps: 'true'
+            LoadBasedAutoScaling:
+                DownScaling:
+                    CpuThreshold: 50
+                    IgnoreMetricsTime: 10
+                    InstanceCount: 1
+                    LoadThreshold: 50
+                    MemoryThreshold: 50
+                    ThresholdsWaitTime: 1
+                Enable: 'true'
+                UpScaling:
+                    CpuThreshold: 90
+                    IgnoreMetricsTime: 10
+                    InstanceCount: 1
+                    LoadThreshold: 90
+                    MemoryThreshold: 90
+                    ThresholdsWaitTime: 1
+            CustomSecurityGroupIds:
+                - !Ref RelayServerSecurityGroup
+                - !Ref LoadBalancerSecurityGroup
+            CustomRecipes:
+                Setup:
+                    - 'cardano_node::deploy_relay'
+                Configure:
+                    - 'alb_support::attach_to_alb'
+                Deploy:
+                    - 'cardano_node::website'
+                Shutdown:
+                    - 'alb_support::detach_from_alb'
+                Undeploy: []
+
+    Instance1:
+        Type: 'AWS::OpsWorks::Instance'
+        Properties:
+            AmiId: !Ref AMI
+            Os: Custom
+            StackId: !Ref Stack
+            LayerIds:
+                - !Ref RelayServerLayer
+            SubnetId: !Select 
+                - '0'
+                - !Ref Subnets
+            InstanceType: !Ref InstanceType
+            RootDeviceType: ebs
+            SshKeyName: !Ref KeyName
+
+    Instance2:
+        Type: 'AWS::OpsWorks::Instance'
+        Condition: NodeTwo
+        Properties:
+            AmiId: !Ref AMI
+            Os: Custom
+            StackId: !Ref Stack
+            LayerIds:
+                - !Ref RelayServerLayer
+            SubnetId: !Select 
+                - '1'
+                - !Ref Subnets
+            InstanceType: !Ref InstanceType
+            RootDeviceType: ebs
+            SshKeyName: !Ref KeyName
+
+    Instance3:
+        Type: 'AWS::OpsWorks::Instance'
+        Condition: NodeThree
+        Properties:
+            AmiId: !Ref AMI
+            Os: Custom
+            StackId: !Ref Stack
+            LayerIds:
+                - !Ref RelayServerLayer
+            SubnetId: !Select 
+                - '0'
+                - !Ref Subnets
+            InstanceType: !Ref InstanceType
+            RootDeviceType: ebs
+            SshKeyName: !Ref KeyName
+
+    BlockInstance:
+        Type: 'AWS::OpsWorks::Instance'
+        Properties:
+            AmiId: !Ref AMI
+            Os: Custom
+            StackId: !Ref Stack
+            LayerIds:
+                - !Ref BlockServerLayer
+            InstanceType: !Ref BlockInstanceType
+            RootDeviceType: ebs
+            SshKeyName: !Ref KeyName
+
+    WebTargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            VpcId: !Ref VPC
+            Port: !Ref WebPort
+            Protocol: HTTP
+            Matcher: 
+                HttpCode: 200
+            HealthCheckIntervalSeconds: 45
+            HealthCheckPath: /
+            HealthCheckPort: !Ref WebPort
+            HealthCheckProtocol: HTTP
+            HealthCheckTimeoutSeconds: 30
+            HealthyThresholdCount: 2
+            UnhealthyThresholdCount: 3
+            TargetGroupAttributes:
+                - Key: deregistration_delay.timeout_seconds
+                  Value: '120'
+            Name: !Join 
+                - '-'
+                - - !Ref 'EnvironmentName'
+                  - web
+
+    WebListener:
+        Type: 'AWS::ElasticLoadBalancingV2::Listener'
+        Condition: UseHTTP
+        Properties:
+            DefaultActions:
+                - Type: forward
+                  TargetGroupArn: !Ref WebTargetGroup
+            LoadBalancerArn: !Ref LoadBalancer
+            Port: !Ref WebPort
+            Protocol: HTTP
+
+    WebListenerSSL:
+        Type: 'AWS::ElasticLoadBalancingV2::Listener'
+        Condition: UseHTTPS
+        Properties:
+            Certificates: 
+                - CertificateArn: !Ref CertificateArn
+            DefaultActions:
+                - Type: forward
+                  TargetGroupArn: !Ref WebTargetGroup
+            LoadBalancerArn: !Ref LoadBalancer
+            Port: !Ref WebSSLPort
+            Protocol: HTTPS
+
+    WebListenerRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Condition: UseHTTP
+        Properties:
+            ListenerArn: !Ref WebListener
+            Priority: 1
+            Conditions:
+                - Field: path-pattern
+                  Values: 
+                    - !Ref Path
+            Actions:
+                - TargetGroupArn: !Ref WebTargetGroup
+                  Type: forward
+
+    WebListenerSSLRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Condition: UseHTTPS
+        Properties:
+            ListenerArn: !Ref WebListenerSSL
+            Priority: 2
+            Conditions:
+                - Field: path-pattern
+                  Values: 
+                    - !Ref Path
+            Actions:
+                - TargetGroupArn: !Ref WebTargetGroup
+                  Type: forward
+
+    RelayTargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            VpcId: !Ref VPC
+            Port: !Ref RelayNodePort
+            Protocol: HTTP
+            Matcher: 
+                HttpCode: 200
+            HealthCheckIntervalSeconds: 45
+            HealthCheckPath: /
+            HealthCheckPort: !Ref WebPort
+            HealthCheckProtocol: HTTP
+            HealthCheckTimeoutSeconds: 30
+            HealthyThresholdCount: 2
+            UnhealthyThresholdCount: 3
+            TargetGroupAttributes:
+                - Key: deregistration_delay.timeout_seconds
+                  Value: '120'
+            Name: !Join 
+                - '-'
+                - - !Ref 'EnvironmentName'
+                  - relay
+
+    RelayListener:
+        Type: 'AWS::ElasticLoadBalancingV2::Listener'
+        Condition: UseHTTP
+        Properties:
+            DefaultActions:
+                - Type: forward
+                  TargetGroupArn: !Ref RelayTargetGroup
+            LoadBalancerArn: !Ref LoadBalancer
+            Port: !Ref RelayNodePort
+            Protocol: HTTP
+
+    RelayListenerSSL:
+        Type: 'AWS::ElasticLoadBalancingV2::Listener'
+        Condition: UseHTTPS
+        Properties:
+            Certificates: 
+                - CertificateArn: !Ref CertificateArn
+            DefaultActions:
+                - Type: forward
+                  TargetGroupArn: !Ref RelayTargetGroup
+            LoadBalancerArn: !Ref LoadBalancer
+            Port: !Ref RelayNodePort
+            Protocol: HTTPS
+    
+    RelayListenerRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Condition: UseHTTP
+        Properties:
+            ListenerArn: !Ref RelayListener
+            Priority: 1
+            Conditions:
+                - Field: path-pattern
+                  Values: 
+                    - !Ref Path
+            Actions:
+                - TargetGroupArn: !Ref RelayTargetGroup
+                  Type: forward
+
+    RelayListenerSSLRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Condition: UseHTTPS
+        Properties:
+            ListenerArn: !Ref RelayListenerSSL
+            Priority: 2
+            Conditions:
+                - Field: path-pattern
+                  Values: 
+                    - !Ref Path
+            Actions:
+                - TargetGroupArn: !Ref RelayTargetGroup
+                  Type: forward

@@ -1,0 +1,9 @@
+DEPENDENCIES
+  alb_support
+    path: alb_support
+  cardano_node
+    path: cardano_node
+
+GRAPH
+  alb_support (0.0.0)
+  cardano_node (0.0.0)

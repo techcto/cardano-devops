@@ -1,0 +1,16 @@
+FROM solodev/cardano-node:latest
+
+ARG network
+ARG database_path
+ARG cardano_path
+ARG host_addr
+ARG relay_node_port
+ARG public_node_addr
+
+COPY config ./config
+COPY liveView ./liveView
+COPY devops/docker/scripts ./scripts
+
+ADD devops/docker/entrypoint-relay.sh /docker-entrypoint.sh
+RUN chmod a+rx /docker-entrypoint.sh
+ENTRYPOINT ["bash", "/docker-entrypoint.sh"]

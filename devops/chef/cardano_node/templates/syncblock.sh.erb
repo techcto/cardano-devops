@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Upload Blockchain to S3"
+cd <%= node[:install][:DatabasePath] %>
+tar -czvf <%= node[:install][:CardanoPath] %>/db.tar.gz *
+cd <%= node[:install][:CardanoPath] %>
+# aws s3 cp db.tar.gz s3://cardano-node/<%= node[:install][:Network] %>/db.tar.gz
+aws s3 cp db.tar.gz s3://<%= node[:install][:BackupBucket] %>/db/db.tar.gz
+rm -Rf db.tar.gz

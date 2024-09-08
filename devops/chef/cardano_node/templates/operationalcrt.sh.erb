@@ -1,0 +1,33 @@
+#!/bin/bash
+
+source vars.sh
+
+if [ ! -f  $POOLDIR/vrf.skey ]; then
+  #Generate Cold Keys and a Cold_counter
+  #DANGER: Always rotate KES keys using the latest cold.counter
+  cardano-cli node key-gen \
+    --cold-verification-key-file $POOLDIR/cold.vkey \
+    --cold-signing-key-file $POOLDIR/cold.skey \
+    --operational-certificate-issue-counter-file $POOLDIR/cold.counter
+
+  #Generate VRF Key pair
+  #Required to start a stake pool's block producing node
+  if [ ! -f $POOLDIR/vrf.skey ]; then
+    cardano-cli node key-gen-VRF \
+      --verification-key-file $POOLDIR/vrf.vkey \
+      --signing-key-file $POOLDIR/vrf.skey
+  fi
+  chmod og-rwx $POOLDIR/vrf.skey
+
+  #Generate the KES Key pair
+  #KES keys are used to generate a stake pool's operational certificate, which expires within 90 days of that opcert's specified KES period
+  cardano-cli node key-gen-KES \
+    --verification-key-file $POOLDIR/kes.vkey \
+    --signing-key-file $POOLDIR/kes.skey
+
+  ### Backup to air-gapped offline machine
+  #Extremely sensitive key, upload cold.skey offsite
+  cd $POOLDIR
+  aws s3 sync . s3://<%= node[:install][:BackupBucket] %>/priv/pool/<%= node[:install][:ProjectTicker] %>
+  rm -f cold.skey vrf.vkey kes.vkey
+fi

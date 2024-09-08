@@ -1,0 +1,21 @@
+#!/bin/bash
+
+source vars.sh
+source transact.sh
+
+#Get current Epoch
+epochLength=$(cat ${cardano_path}/share/config/${network}/${network}-shelley-genesis.json | jq -r '.epochLength')
+currentSlot=$(cardano-cli query tip --${tip} | jq -r '.slot')
+currentEpoch=$((currentSlot / epochLength))
+
+#Generate deregistration certificate
+cardano-cli stake-pool deregistration-certificate \
+   --cold-verification-key-file $POOLDIR/cold.vkey \
+   --epoch $currentEpoch \
+   --out-file $POOLDIR/pool.retirement
+
+#Deregister Pool
+export POOLREFUND=true
+export PAYMENT=0
+transact
+unset POOLREFUND

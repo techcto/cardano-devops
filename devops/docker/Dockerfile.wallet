@@ -1,0 +1,10 @@
+FROM solodev/cardano-node:latest
+
+#Cardano HW Wallet Cli
+RUN HW_WALLET_VERSION="1.7.0-rc0" && \
+    wget https://github.com/vacuumlabs/cardano-hw-cli/releases/download/v$HW_WALLET_VERSION/cardano-hw-cli_$HW_WALLET_VERSION-1.deb && \
+    dpkg --install cardano-hw-cli_$HW_WALLET_VERSION-1.deb
+
+ADD devops/docker/entrypoint-wallet.sh /docker-entrypoint.sh
+RUN chmod a+rx /docker-entrypoint.sh
+ENTRYPOINT ["bash", "/docker-entrypoint.sh"]
